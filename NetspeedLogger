@@ -1,0 +1,231 @@
+#!/usr/bin/python
+
+from __future__ import print_function
+from datetime import datetime
+
+import argparse
+import subprocess
+import os
+import platform
+import re
+import sys
+import yaml
+
+
+parser = argparse.ArgumentParser(description='Gets the current speed of the internet connection')
+parser.add_argument(
+	'--fakedata', dest='fake_data', action='store_true',
+	help='uses testing data instead of performing a real time check',
+)
+parser.add_argument(
+	'--file', dest='file', action='store',
+	help='if supplied, appends speedtest data to the file',
+)
+args = parser.parse_args()
+
+# Requires the speedtest commandline program to be installed (https://github.com/sivel/speedtest-cli)
+# We assume that the directory has been added to the path, since it can be in different places depending
+# on the system
+# Mac/Linux: /usr/local/bin/speedtest-cli
+# Windows: C:\Python27\Lib\site-packages\speedtest-cli
+SPEEDTEST = 'speedtest-cli'
+
+########################################################
+# config
+#
+# Description:
+#	A package variable that can be overridden by values
+#	stored in config.yaml.
+#
+# Config options:
+#	home_networks
+########################################################
+config = {
+	'home_networks': [],				# a whitelist of valid home network SSIDs
+	'hard_wired_connection': False,	# if set to true, will always assume we are on the home network
+}
+
+
+########################################################
+# warn
+#
+# Description
+#	Who knew printing to stderr was so verbose in Python?
+#	This is also a sad realization that I am a perl
+#	programmer.
+########################################################
+def warn( message ):
+	print("WARNING: ", message, file=sys.stderr)
+
+
+########################################################
+# AppendTime
+#
+# Description
+#	Given a string, finds the current time and appends
+#	the timestamp to the string
+########################################################
+def AppendTime( message ):
+	return '[%s] %s' % (
+		datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
+		message,
+	)
+
+########################################################
+# LoadConfig
+#
+# Description:
+#	Loads the configuration data in config.yaml, which
+#	should be in the project directory
+########################################################
+def LoadConfig():
+	try:
+		with open('config.yaml', 'r') as stream:
+			global config
+			config = yaml.load(stream)
+	except IOError:
+		warn("Config file doesn't exist")
+		raise SystemExit
+
+########################################################
+# GetCurrentSpeed
+#
+# Description:
+#	Shells out to the speedtest-cli command line program
+#	and returns a dictionary of speed data
+#
+#
+# Returns:
+#	{
+#		Ping     : ms
+#		Download : Mbits/s
+#		Upload   : Mbits/s
+#	}
+########################################################
+def GetCurrentSpeed():
+	if args.fake_data:
+		raw_out = "Ping: 24.004 ms\nDownload: 6.42 Mbit/s\nUpload: 10.60 Mbit/s\n"
+	else:
+		raw_out = subprocess.check_output([SPEEDTEST,'--simple'])
+
+	data = {}
+	for line in re.split("\n", raw_out):
+		match = re.match("(\w+): (.*)", line)
+		if match:
+			data[match.group(1)] = match.group(2)
+	return data
+
+########################################################
+# GetSSIDWindows
+#
+# Description:
+#	Assuming that the current machine is a Windows PC,
+#	gets the current connected SSID.
+#
+#
+# Returns:
+#	(string) The currently connected SSID
+########################################################
+def GetSSIDWindows():
+	# TODO: Find out how to get the SSID for windows machines
+	if not config['hard_wired_connection']:
+		warn("The NetspeedLogger program only supports hard-wired windows machines")
+		raise SystemExit
+	return ''
+
+########################################################
+# GetSSIDMac
+#
+# Description:
+#	Assuming that the current machine is a Mac, gets
+#	the current connected SSID.
+#
+# Returns:
+#	(string) The currently connected SSID
+########################################################
+def GetSSIDMac():
+	ssid = ''
+	raw_output = subprocess.check_output([
+		'/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport',
+		'--getinfo',
+	])
+	airport_data = re.split("\n", raw_output)
+	for line in airport_data:
+		match = re.match('\s+SSID: (\w+)', line)
+		if match:
+			ssid = match.group(1)
+			break
+	else:
+		ssid = 'Unknown'
+	return ssid
+
+########################################################
+# IsHomeNetwork
+#
+# Description:
+#	Given the currently connected SSID, determines if
+#	the computer is connected to the home network. These
+#	should be configured in config.yaml.
+#
+#	Optionally, if hired_wired_connection is set to a
+#	truthy value, we will always assume that the machine
+#	is on the home network.
+#
+# Returns:
+#	True/False
+########################################################
+def IsHomeNetwork( ssid ):
+	return (
+		config['hard_wired_connection']
+		or ssid in config['home_networks']
+	)
+
+########################################################
+# GetSystem
+#
+# Description:
+#	Returns the name of the system running the current
+#	program. 'Darwin' system is renamed to 'Mac' for easier
+#	readability.
+#
+# Returns:
+#	A string representing the current system
+########################################################
+def GetSystem():
+	system = platform.system()
+	if system == 'Darwin':
+		return 'Mac'
+	else:
+		return system
+
+def Main():
+	LoadConfig()
+	system = GetSystem()
+
+	ssid = ''
+	if (system == 'Mac'):
+		ssid = GetSSIDMac()
+	elif (system == 'Windows'):
+		ssid = GetSSIDWindows()
+	else:
+		warn("This program is not compatabile on the '%s' system" % system)
+		raise SystemExit
+
+	if (not IsHomeNetwork(ssid)):
+		warn("Not connected to a home network")
+		raise SystemExit
+
+	speed_data = GetCurrentSpeed()
+	speed_data['SSID'] = ssid
+	speed_data['System'] = system
+	speed_data['HardWired'] = True if config['hard_wired_connection'] else False
+	data_string = AppendTime(speed_data)
+
+	if args.file:
+		fh = open(args.file, 'a')
+		fh.write(data_string + "\n")
+		fh.close
+	else:
+		print(data_string)
+
+Main()
