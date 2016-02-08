@@ -79,8 +79,12 @@ def AppendTime( message ):
 #	should be in the project directory
 ########################################################
 def LoadConfig():
+	
+	# Get the current directory
+	directory = os.path.dirname(os.path.realpath(__file__))
+	yaml_file ='%s/config.yaml' % directory
 	try:
-		with open('config.yaml', 'r') as stream:
+		with open(yaml_file, 'r') as stream:
 			global config
 			config = yaml.load(stream)
 	except IOError:
