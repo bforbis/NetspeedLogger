@@ -199,6 +199,8 @@ def GetSystem():
 	system = platform.system()
 	if system == 'Darwin':
 		return 'Mac'
+	elif re.match('^CYGWIN', system):
+		return 'Cygwin'
 	else:
 		return system
 
@@ -209,7 +211,7 @@ def Main():
 	ssid = ''
 	if (system == 'Mac'):
 		ssid = GetSSIDMac()
-	elif (system == 'Windows'):
+	elif (system == 'Windows' or system == 'Cygwin'):
 		ssid = GetSSIDWindows()
 	else:
 		warn("This program is not compatabile on the '%s' system" % system)
