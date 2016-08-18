@@ -120,6 +120,24 @@ def GetCurrentSpeed():
 	return data
 
 ########################################################
+# GetSSIDLinux
+#
+# Description:
+#	Assuming that the current machine is Linux,
+#	gets the current connected SSID.
+#
+#
+# Returns:
+#	(string) The currently connected SSID
+########################################################
+def GetSSIDLinux():
+	# TODO: Find out how to get the SSID for linux machines
+	if not config['hard_wired_connection']:
+		warn("The NetspeedLogger program only supports hard-wired linux machines")
+		raise SystemExit
+	return ''
+
+########################################################
 # GetSSIDWindows
 #
 # Description:
@@ -213,6 +231,8 @@ def Main():
 		ssid = GetSSIDMac()
 	elif (system == 'Windows' or system == 'Cygwin'):
 		ssid = GetSSIDWindows()
+	elif (system == 'Linux'):
+		ssid = GetSSIDLinux()
 	else:
 		warn("This program is not compatabile on the '%s' system" % system)
 		raise SystemExit
